@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseCast WA — Universal WhatsApp Broadcast & Anti-Ban Engine</title>
+
+    <!-- Apply saved / system theme before paint (no flash) -->
+    <script>
+        (function () {
+            var t = null;
+            try { t = localStorage.getItem('pulsecast-theme'); } catch (e) {}
+            if (!t) t = 'light';
+            document.documentElement.classList.toggle('dark', t === 'dark');
+        })();
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Recolour every existing Tailwind class through theme variables
+        const c = v => `rgb(var(${v}) / <alpha-value>)`;
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        white: c('--ink'),
+                        slate: {
+                            300: c('--t2'), 400: c('--t3'), 500: c('--t4'),
+                            700: c('--line'), 800: c('--line2'),
+                            900: c('--surface'), 950: c('--surface-deep')
+                        },
+                        emerald: { 200: c('--blue-ice'), 300: c('--blue-soft'), 400: c('--blue-t'), 500: c('--blue'), 600: c('--blue-d') },
+                        cyan:    { 300: c('--violet-soft'), 400: c('--violet-t'), 500: c('--violet') },
+                        rose:    { 400: c('--rv-t'), 500: c('--rv'), 600: c('--rv-d') },
+                        amber:   { 400: c('--or-t'), 500: c('--or') },
+                        indigo:  { 400: c('--vb-t') }
+                    }
+                }
+            }
+        };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* ---------- Theme tokens (RGB channels) ---------- */
+        :root {                                   /* LIGHT */
+            --bg: 255 255 255;
+            --ink: 24 26 58;
+            --t2: 52 58 102;
+            --t3: 92 98 142;
+            --t4: 124 130 168;
+            --line: 205 210 238;
+            --line2: 228 232 248;
+            --surface: 255 255 255;
+            --surface-deep: 244 246 255;
+
+            --blue: 37 99 235;     --blue-t: 29 78 216;   --blue-d: 30 64 175;   --blue-soft: 96 165 250;  --blue-ice: 219 234 254;
+            --violet: 124 58 237;  --violet-t: 109 40 217; --violet-soft: 139 92 246;
+            --rv: 190 24 110;      --rv-t: 175 20 100;     --rv-d: 150 16 85;
+            --or: 249 115 22;      --or-t: 217 85 8;
+            --vb-t: 79 70 229;
+
+            --card-shadow: 0 12px 34px rgba(70, 60, 160, 0.10);
+            --glow-a: rgba(37, 99, 235, 0.10);
+            --glow-b: rgba(124, 58, 237, 0.09);
+            --glow-c: rgba(249, 115, 22, 0.08);
+            --chat-bg: #f4f6ff;
+            --chat-dot: rgba(37, 99, 235, 0.10);
+        }
+        .dark {                                   /* DARK */
+            --bg: 7 9 20;
+            --ink: 255 255 255;
+            --t2: 203 213 225;
+            --t3: 148 163 184;
+            --t4: 100 116 139;
+            --line: 52 62 100;
+            --line2: 30 38 68;
+            --surface: 14 18 40;
+            --surface-deep: 8 10 24;
+
+            --blue-t: 96 165 250;  --blue-d: 37 99 235;   --blue-soft: 147 197 253; --blue-ice: 191 219 254;
+            --violet-t: 167 139 250; --violet-soft: 196 181 253;
+            --rv-t: 236 110 175;   --rv-d: 190 24 110;
+            --or-t: 251 146 60;
+            --vb-t: 129 140 248;
+
+            --card-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+            --glow-a: rgba(37, 99, 235, 0.16);
+            --glow-b: rgba(124, 58, 237, 0.14);
+            --glow-c: rgba(249, 115, 22, 0.08);
+            --chat-bg: #0b0e1f;
+            --chat-dot: rgba(255, 255, 255, 0.04);
+        }
+
+        /* ---------- Base ---------- */
+        html { color-scheme: light; }
+        html.dark { color-scheme: dark; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: rgb(var(--bg));
+            color: rgb(var(--ink));
+            background-image:
+                radial-gradient(at 0% 0%, var(--glow-a) 0px, transparent 45%),
+                radial-gradient(at 100% 0%, var(--glow-b) 0px, transparent 45%),
+                radial-gradient(at 50% 100%, var(--glow-c) 0px, transparent 50%);
+            background-attachment: fixed;
+            transition: background-color .25s ease, color .25s ease;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        ::selection { background: rgb(var(--violet) / .25); }
+
+        /* ---------- Thin RGB boundary (1px animated gradient ring) ---------- */
+        :root { --accent-grad: linear-gradient(270deg, #3b82f6, #10b981, #8b5cf6, #f59e0b, #ef4444, #3b82f6); }
+        @keyframes flow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+        .glass-card, .rgb-border { position: relative; }
+        .glass-card::before, .rgb-border::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1px;
+            background: var(--accent-grad);
+            background-size: 300% 300%;
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask-composite: xor;
+                    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+            animation: flow 6s ease infinite;
+            pointer-events: none;
+            z-index: 2;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .glass-card::before, .rgb-border::before { animation: none; }
+        }
+
+        .glass-card {
+            background: rgb(var(--surface) / 0.80);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: var(--card-shadow);
+            transition: background .25s ease;
+        }
+
+        /* ---------- Phone preview ---------- */
+        .wa-chat-bg {
+            background-color: var(--chat-bg);
+            background-image: radial-gradient(var(--chat-dot) 1px, transparent 0);
+            background-size: 16px 16px;
+        }
+        .wa-head { background: linear-gradient(90deg, #2563eb, #7c3aed); color: #fff; }
+        .wa-head p { color: #fff; }
+        .wa-bubble {
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 70%, #be186e 130%);
+            color: #fff;
+            border-radius: 12px 0px 12px 12px;
+            box-shadow: 0 6px 18px rgba(124, 58, 237, 0.25);
+        }
+
+        /* ---------- Inputs, focus, scrollbars ---------- */
+        input:focus, textarea:focus { box-shadow: 0 0 0 1px rgb(var(--violet) / .35); }
+        input[type="range"] { height: 4px; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgb(var(--surface-deep)); }
+        ::-webkit-scrollbar-thumb { background: rgb(var(--line)); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgb(var(--violet) / .6); }
+
+        button:focus-visible, label:focus-visible { outline: 1px solid rgb(var(--violet)); outline-offset: 2px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <!-- Top Navbar -->
+        <header class="glass-card rounded-2xl p-4 md:px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center space-x-3.5">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 via-cyan-500 to-rose-500 flex items-center justify-center text-[#ffffff] font-bold text-xl shadow-lg shadow-cyan-500/25">
+                    ⚡
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-xl font-bold tracking-tight text-white">PulseCast <span class="text-cyan-400">WA</span></h1>
+                        <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Evolution v2</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Universal WhatsApp Broadcast, Personalization & Anti-Ban Engine</p>
+                </div>
+            </div>
+
+            <!-- Instance & Connection Bar -->
+            <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+                <div id="statusBadge" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs font-medium">
+                    <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    <span id="statusText" class="text-slate-300">Checking...</span>
+                </div>
+
+                <input id="instanceName" type="text" value="PulseCast_Main" onchange="checkConnectionStatus()"
+                    class="bg-slate-900/90 border border-slate-700/80 px-3.5 py-2 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-400 w-44"
+                    placeholder="Instance Name">
+
+                <button onclick="connectWhatsApp()" class="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-[#ffffff] px-4 py-2 rounded-xl font-semibold text-sm transition shadow-lg shadow-cyan-500/20">
+                    Link WhatsApp
+                </button>
+                <button onclick="logoutWhatsApp()" title="Disconnect Instance" class="bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/30 border border-slate-700 text-slate-300 px-3 py-2 rounded-xl text-sm transition">
+                    Disconnect
+                </button>
+                <button id="themeBtn" onclick="toggleTheme()" title="Switch light / dark mode" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-2 rounded-xl text-sm transition">
+                    <span id="themeIcon">🌙</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Collapsible QR Code Modal/Drawer -->
+        <div id="qrSection" class="hidden glass-card rounded-2xl p-6">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6 max-w-2xl mx-auto">
+                <div class="space-y-2 text-center md:text-left">
+                    <span class="text-xs uppercase tracking-wider text-emerald-400 font-semibold">Step 1 • Pair Device</span>
+                    <h2 class="text-xl font-bold text-white">Scan QR with WhatsApp</h2>
+                    <ol class="text-xs text-slate-400 space-y-1.5 list-decimal list-inside">
+                        <li>Open WhatsApp on your phone</li>
+                        <li>Tap <strong>Menu (⋮)</strong> or <strong>Settings</strong> &rarr; <strong>Linked Devices</strong></li>
+                        <li>Tap <strong>Link a Device</strong> and point at this QR code</li>
+                    </ol>
+                    <p id="connState" class="text-amber-400 text-xs pt-2 font-medium">⏳ Waiting for QR scan...</p>
+                </div>
+                <div class="relative">
+                    <img id="qrImage" src="" alt="WhatsApp QR Code" class="w-48 h-48 bg-white p-2.5 rounded-2xl shadow-2xl border border-slate-700" style="background:#fff" />
+                    <button onclick="document.getElementById('qrSection').classList.add('hidden')" class="absolute -top-2 -right-2 bg-slate-800 text-slate-300 hover:text-white rounded-full w-7 h-7 flex items-center justify-center text-xs border border-slate-700">✕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Workspace Grid (12 Columns) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Column: Campaign Builder (5 cols) -->
+            <div class="lg:col-span-5 glass-card rounded-2xl p-6 space-y-5">
+                <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                        <span class="text-emerald-400">01.</span> Campaign Configuration
+                    </h2>
+                    <button onclick="downloadSampleCSV()" class="text-xs text-cyan-400 hover:text-cyan-300 underline font-medium">
+                        ⬇ Sample CSV
+                    </button>
+                </div>
+
+                <!-- CSV File Upload -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1.5">Audience CSV <span class="text-slate-500">(Requires Phone; any extra columns become {tags})</span></label>
+                    <label for="csvFile" class="flex flex-col items-center justify-center w-full h-24 border border-dashed border-slate-700 hover:border-cyan-400/70 rounded-xl cursor-pointer bg-slate-900/50 hover:bg-slate-900/80 transition p-3 text-center">
+                        <p id="csvFileName" class="text-xs text-slate-300 font-medium">📂 Click to select <span class="text-cyan-400">contacts.csv</span></p>
+                        <p id="csvPreviewBadge" class="text-[11px] text-slate-500 mt-1">Supports 10-digit numbers or with country code</p>
+                        <input id="csvFile" type="file" accept=".csv" class="hidden" onchange="previewCSV(this)">
+                    </label>
+                </div>
+
+                <!-- Media Attachment URL -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1.5">Media Attachment URL — PDF, Image, or MP4 <span class="text-slate-500">(Optional)</span></label>
+                    <input id="mediaUrl" type="url" oninput="updateLivePreview()" placeholder="https://example.com/catalog-or-banner.pdf"
+                        class="w-full text-sm bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400">
+                </div>
+
+                <!-- Message Template + Dynamic Variable Pills -->
+                <div>
+                    <div class="flex flex-wrap justify-between items-center gap-1 mb-1.5">
+                        <label class="text-xs font-medium text-slate-300">WhatsApp Message Template</label>
+                        <div id="tagButtons" class="flex flex-wrap gap-1">
+                            <button type="button" onclick="insertTag('{name}')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-emerald-400 px-2 py-0.5 rounded border border-slate-700">+ {name}</button>
+                            <button type="button" onclick="insertTag('{company}')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-400 px-2 py-0.5 rounded border border-slate-700">+ {company}</button>
+                            <button type="button" onclick="insertTag('{offer}')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-amber-400 px-2 py-0.5 rounded border border-slate-700">+ {offer}</button>
+                        </div>
+                    </div>
+                    <textarea id="messageTemplate" rows="5" oninput="updateLivePreview()"
+                        class="w-full text-sm bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 text-white focus:outline-none focus:border-emerald-400">Hello {name}! 👋
+
+We have an exclusive update for *{company}*: enjoy *{offer}* on your next order with us.
+
+Reply *"YES"* to claim your offer right away!</textarea>
+                </div>
+
+                <!-- Anti-Ban Delay Controls -->
+                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-medium text-slate-300">🛡️ Anti-Ban Random Delay (Seconds)</span>
+                        <span class="text-xs mono text-cyan-400"><span id="minDelayVal">8</span>s – <span id="maxDelayVal">16</span>s</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[10px] text-slate-400">Min Delay</label>
+                            <input id="minDelay" type="range" min="4" max="30" value="8" oninput="document.getElementById('minDelayVal').innerText=this.value" class="w-full accent-emerald-400">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400">Max Delay</label>
+                            <input id="maxDelay" type="range" min="8" max="60" value="16" oninput="document.getElementById('maxDelayVal').innerText=this.value" class="w-full accent-amber-400">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-3 pt-1">
+                    <button id="startBtn" onclick="startCampaign()" class="flex-1 bg-gradient-to-r from-emerald-500 via-cyan-500 to-rose-500 hover:from-emerald-400 hover:via-cyan-400 hover:to-rose-400 text-[#ffffff] py-3 rounded-xl font-bold text-sm transition shadow-lg shadow-cyan-500/25">
+                        🚀 Launch Broadcast
+                    </button>
+                    <button id="stopBtn" onclick="stopCampaign()" class="hidden bg-rose-500 hover:bg-rose-600 text-[#ffffff] px-5 py-3 rounded-xl font-bold text-sm transition">
+                        🛑 Stop
+                    </button>
+                </div>
+            </div>
+
+            <!-- Middle Column: Live WhatsApp Preview (3 cols) -->
+            <div class="lg:col-span-3 glass-card rounded-2xl p-5 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-white border-b border-slate-800/80 pb-3 mb-4 flex items-center gap-2">
+                        <span class="text-cyan-400">02.</span> Phone Preview
+                    </h2>
+
+                    <!-- Mock Phone Frame -->
+                    <div class="rgb-border rounded-3xl overflow-hidden wa-chat-bg flex flex-col h-96">
+                        <!-- WA Header -->
+                        <div class="wa-head px-3.5 py-2.5 flex items-center space-x-2.5">
+                            <div class="w-8 h-8 rounded-full bg-[#ffffff]/20 flex items-center justify-center text-xs font-bold">💬</div>
+                            <div>
+                                <p id="previewRecipient" class="text-xs font-semibold leading-tight">Nobita</p>
+                                <p class="text-[10px]" style="color:#fed7aa">typing...</p>
+                            </div>
+                        </div>
+
+                        <!-- WA Message Area -->
+                        <div class="p-3 flex-1 overflow-y-auto flex flex-col justify-end">
+                            <div class="wa-bubble p-2.5 text-xs shadow space-y-2 max-w-[92%] ml-auto">
+                                <div id="previewMediaBadge" class="hidden bg-black/25 rounded-lg p-2 text-[11px] flex items-center space-x-2 border border-white/20">
+                                    <span>📎</span>
+                                    <span id="previewMediaText" class="truncate">Attachment.pdf</span>
+                                </div>
+                                <p id="previewBubbleText" class="whitespace-pre-wrap leading-relaxed break-words"></p>
+                                <div class="text-[9px] text-right" style="color:rgba(255,255,255,.75)">10:42 AM ✓✓</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-[11px] text-slate-400 mt-4 text-center">
+                    Preview uses first contact from CSV or sample placeholders.
+                </p>
+            </div>
+
+            <!-- Right Column: Live Progress & Telemetry Logs (4 cols) -->
+            <div class="lg:col-span-4 glass-card rounded-2xl p-6 flex flex-col justify-between">
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                        <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                            <span class="text-amber-400">03.</span> Live Telemetry
+                        </h2>
+                        <span id="runningPill" class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium">Idle</span>
+                    </div>
+
+                    <!-- KPI Stat Cards -->
+                    <div class="grid grid-cols-3 gap-3 text-center">
+                        <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+                            <p class="text-[11px] text-slate-400">Contacts</p>
+                            <p id="statTotal" class="text-2xl font-bold text-white mt-0.5">0</p>
+                        </div>
+                        <div class="bg-slate-900/90 border border-emerald-500/20 p-3 rounded-xl">
+                            <p class="text-[11px] text-emerald-400">Sent ✅</p>
+                            <p id="statSent" class="text-2xl font-bold text-emerald-400 mt-0.5">0</p>
+                        </div>
+                        <div class="bg-slate-900/90 border border-rose-500/20 p-3 rounded-xl">
+                            <p class="text-[11px] text-rose-400">Failed ❌</p>
+                            <p id="statFailed" class="text-2xl font-bold text-rose-400 mt-0.5">0</p>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs text-slate-400">
+                            <span id="currentLeadText">Ready to broadcast</span>
+                            <span id="progressPercent" class="mono font-semibold text-cyan-400">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                            <div id="progressBar" class="h-full bg-gradient-to-r from-emerald-500 via-cyan-500 to-amber-400 transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Terminal Log Box -->
+                    <div id="logBox" class="bg-slate-950/90 border border-slate-800/90 p-3.5 rounded-xl h-64 overflow-y-auto mono text-xs space-y-1.5 text-slate-300">
+                        <p class="text-slate-500">// PulseCast WA ready. Upload CSV to start...</p>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>⚡ Presence Emulation: Active</span>
+                    <span>Auto-Country Code: +91</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        let sampleLead = {
+            name: "Nobita",
+            company: "Apex Studio",
+            offer: "25% OFF",
+            project: "PulseCast Pro"
+        };
+
+        /* ---------- Theme toggle ---------- */
+        function syncThemeIcon() {
+            const dark = document.documentElement.classList.contains('dark');
+            document.getElementById('themeIcon').innerText = dark ? '🌙' : '☀️';
+        }
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            try { localStorage.setItem('pulsecast-theme', isDark ? 'dark' : 'light'); } catch (e) {}
+            syncThemeIcon();
+        }
+        syncThemeIcon();
+
+        function insertTag(tag) {
+            const textarea = document.getElementById('messageTemplate');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + tag + textarea.value.substring(end);
+            textarea.focus();
+            updateLivePreview();
+        }
+
+        function updateLivePreview() {
+            const rawMsg = document.getElementById('messageTemplate').value;
+            const mediaUrl = document.getElementById('mediaUrl').value.trim();
+
+            const rendered = rawMsg.replace(/\{([a-zA-Z0-9_-]+)\}/g, (match, key) => {
+                const lowerKey = key.toLowerCase();
+                return sampleLead[lowerKey] !== undefined && sampleLead[lowerKey] !== ""
+                    ? sampleLead[lowerKey]
+                    : match;
+            });
+
+            document.getElementById('previewRecipient').innerText = sampleLead.name || "Contact";
+            document.getElementById('previewBubbleText').innerText = rendered;
+
+            const badge = document.getElementById('previewMediaBadge');
+            if (mediaUrl) {
+                badge.classList.remove('hidden');
+                const filename = mediaUrl.split('/').pop().split('?')[0] || 'Attachment';
+                document.getElementById('previewMediaText').innerText = filename;
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function previewCSV(input) {
+            const file = input.files[0];
+            if (!file) return;
+            document.getElementById('csvFileName').innerHTML = `✅ Selected: <span class="text-emerald-400 font-semibold">${file.name}</span>`;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const lines = e.target.result.split(/\r?\n/).filter(line => line.trim() !== "");
+                const rowCount = Math.max(0, lines.length - 1);
+                document.getElementById('csvPreviewBadge').innerText = `${rowCount} valid contact rows detected in file`;
+
+                if (lines.length > 1) {
+                    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+                    const firstRow = lines[1].split(',');
+                    sampleLead = {};
+                    headers.forEach((h, i) => {
+                        if (h && firstRow[i] !== undefined) {
+                            sampleLead[h] = firstRow[i].trim();
+                        }
+                    });
+
+                    // Dynamically populate variable pills from CSV columns
+                    const tagContainer = document.getElementById('tagButtons');
+                    tagContainer.innerHTML = headers.map(h =>
+                        `<button type="button" onclick="insertTag('{${h}}')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-emerald-400 px-2 py-0.5 rounded border border-slate-700">+ {${h}}</button>`
+                    ).join('');
+
+                    updateLivePreview();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function downloadSampleCSV() {
+            const csvContent = "Name,Phone,Company,Offer\nNobita,9163784XXXX,Apex Studio,25% OFF\nJohn doe,918618XXXXXX,Nova Tech,Free Onboarding\nAmar Sharma,983411XXXX,Zenith Retail,VIP Early Access\n";
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", "sample_contacts.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        async function checkConnectionStatus() {
+            const instance = document.getElementById('instanceName').value.trim();
+            if (!instance) return;
+            try {
+                const res = await fetch(`/api/status/${instance}`);
+                const data = await res.json();
+                const dot = document.getElementById('statusDot');
+                const txt = document.getElementById('statusText');
+
+                if (data.state === "open") {
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+                    txt.innerText = "Connected";
+                    txt.className = "text-emerald-400 font-semibold";
+                    document.getElementById('qrSection').classList.add('hidden');
+                } else if (data.state === "connecting") {
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse";
+                    txt.innerText = "Scan QR Required";
+                    txt.className = "text-amber-400";
+                } else {
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+                    txt.innerText = "Disconnected";
+                    txt.className = "text-rose-400";
+                }
+            } catch (e) {
+                document.getElementById('statusText').innerText = "API Offline";
+            }
+        }
+
+        async function connectWhatsApp() {
+            const instance = document.getElementById('instanceName').value.trim();
+            const res = await fetch(`/api/connect/${instance}`);
+            const data = await res.json();
+
+            if (data.state === "open") {
+                checkConnectionStatus();
+                alert("✅ WhatsApp is already connected!");
+            } else if (data.base64) {
+                document.getElementById('qrSection').classList.remove('hidden');
+                document.getElementById('qrImage').src = data.base64;
+            } else if (data.error) {
+                alert("❌ Error: " + data.error);
+            }
+        }
+
+        async function logoutWhatsApp() {
+            const instance = document.getElementById('instanceName').value.trim();
+            if (!confirm(`Disconnect WhatsApp session '${instance}'?`)) return;
+            await fetch(`/api/logout/${instance}`, { method: 'DELETE' });
+            checkConnectionStatus();
+        }
+
+        async function startCampaign() {
+            const instance = document.getElementById('instanceName').value.trim();
+            const fileInput = document.getElementById('csvFile').files[0];
+            const message = document.getElementById('messageTemplate').value;
+            const mediaUrl = document.getElementById('mediaUrl').value;
+            const minDelay = document.getElementById('minDelay').value;
+            const maxDelay = document.getElementById('maxDelay').value;
+
+            if (!fileInput) return alert("Please upload a contacts CSV file first!");
+
+            const formData = new FormData();
+            formData.append("instance_name", instance);
+            formData.append("file", fileInput);
+            formData.append("message", message);
+            formData.append("media_url", mediaUrl);
+            formData.append("min_delay", minDelay);
+            formData.append("max_delay", maxDelay);
+
+            const res = await fetch('/api/start-campaign', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.error) alert(data.error);
+        }
+
+        async function stopCampaign() {
+            await fetch('/api/stop-campaign', { method: 'POST' });
+        }
+
+        // Poll progress & connection state
+        setInterval(async () => {
+            try {
+                const res = await fetch('/api/campaign-progress');
+                const data = await res.json();
+
+                document.getElementById('statTotal').innerText = data.total;
+                document.getElementById('statSent').innerText = data.sent;
+                document.getElementById('statFailed').innerText = data.failed;
+
+                const done = data.sent + data.failed;
+                const pct = data.total > 0 ? Math.round((done / data.total) * 100) : 0;
+                document.getElementById('progressBar').style.width = `${pct}%`;
+                document.getElementById('progressPercent').innerText = `${pct}%`;
+
+                const pill = document.getElementById('runningPill');
+                const startBtn = document.getElementById('startBtn');
+                const stopBtn = document.getElementById('stopBtn');
+                const currentLeadText = document.getElementById('currentLeadText');
+
+                if (data.running) {
+                    pill.innerText = "Broadcasting...";
+                    pill.className = "text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse";
+                    stopBtn.classList.remove('hidden');
+                    startBtn.classList.add('opacity-50', 'pointer-events-none');
+                    currentLeadText.innerText = data.current_lead ? `Sending to ${data.current_lead}...` : "Processing...";
+                } else {
+                    pill.innerText = "Idle";
+                    pill.className = "text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400";
+                    stopBtn.classList.add('hidden');
+                    startBtn.classList.remove('opacity-50', 'pointer-events-none');
+                    currentLeadText.innerText = done > 0 ? "Campaign finished" : "Ready to broadcast";
+                }
+
+                if (data.logs && data.logs.length > 0) {
+                    const logBox = document.getElementById('logBox');
+                    logBox.innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
+                    logBox.scrollTop = logBox.scrollHeight;
+                }
+            } catch (e) {}
+        }, 2000);
+
+        setInterval(checkConnectionStatus, 8000);
+        updateLivePreview();
+        checkConnectionStatus();
+    </script>
+</body>
+</html>
