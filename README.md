@@ -52,14 +52,14 @@
 
 ```mermaid
 flowchart LR
-    A[Browser Dashboard<br/>HTML + Tailwind + JS] -->|REST / multipart| B[Flask Server<br/>app.py]
-    B -->|Background thread| C[Campaign Worker]
-    B -->|HTTP + API key| D[Evolution API v2<br/>Baileys]
-    C -->|sendText / sendMedia / presence| D
-    D --> E[(PostgreSQL 15)]
-    D --> F[(Redis)]
-    D -->|WhatsApp Web socket| G[Recipients' WhatsApp]
-    A -.->|polls /api/campaign-progress| B
+    A["Browser Dashboard<br/>HTML + Tailwind + JS"] -->|"REST / multipart"| B["Flask Server<br/>app.py"]
+    B -->|"Background thread"| C["Campaign Worker"]
+    B -->|"HTTP + API key"| D["Evolution API v2<br/>Baileys"]
+    C -->|"sendText / sendMedia / presence"| D
+    D --> E[("PostgreSQL 15")]
+    D --> F[("Redis")]
+    D -->|"WhatsApp Web socket"| G["Recipient WhatsApp"]
+    A -.->|"polls /api/campaign-progress"| B
 ```
 
 | Layer | Technology | Role |
